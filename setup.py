@@ -31,6 +31,7 @@ setup(
     tests_require=[
         'nose>=1.3.0',
         'mock>=1.0.0',
+        'webtest>=2.0.20'
     ],
     data_files=get_anki_bundled_files()+[
         ('examples', [
