@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+
 import os
 import sys
 import signal
 import subprocess
-import binascii
 import getpass
-import hashlib
-import sqlite3
+
+from AnkiServer.user_managers import SqliteUserManager
 
 SERVERCONFIG = "production.ini"
 AUTHDBPATH = "auth.db"
@@ -15,16 +16,16 @@ PIDPATH = "/tmp/ankiserver.pid"
 COLLECTIONPATH = "collections/"
 
 def usage():
-    print "usage: "+sys.argv[0]+" <command> [<args>]"
-    print
-    print "Commands:"
-    print "  start [configfile] - start the server"
-    print "  debug [configfile] - start the server in debug mode"
-    print "  stop               - stop the server"
-    print "  adduser <username> - add a new user"
-    print "  deluser <username> - delete a user"
-    print "  lsuser             - list users"
-    print "  passwd <username>  - change password of a user"
+    print("usage: "+sys.argv[0]+" <command> [<args>]")
+    print()
+    print("Commands:")
+    print("  start [configfile] - start the server")
+    print("  debug [configfile] - start the server in debug mode")
+    print("  stop               - stop the server")
+    print("  adduser <username> - add a new user")
+    print("  deluser <username> - delete a user")
+    print("  lsuser             - list users")
+    print("  passwd <username>  - change password of a user")
 
 def startsrv(configpath, debug):
     if not configpath:
@@ -58,81 +59,62 @@ def stopsrv():
 
                 os.kill(pid, signal.SIGKILL)
                 os.remove(PIDPATH)
-        except Exception, error:
-            print >>sys.stderr, sys.argv[0]+": Failed to stop server: "+error.message
+        except Exception as error:
+            print("{}: Failed to stop server: {}"
+                  .format(sys.argv[0], error.message), file=sys.stderr)
     else:
-        print >>sys.stderr, sys.argv[0]+": The server is not running"
+        print("{}: The server is not running".format(sys.argv[0]),
+              file=sys.stderr)
 
 def adduser(username):
     if username:
-        print "Enter password for "+username+": "
-
+        print("Enter password for {}".format(username))
         password = getpass.getpass()
-        salt = binascii.b2a_hex(os.urandom(8))
-        hash = hashlib.sha256(username+password+salt).hexdigest()+salt
 
-        conn = sqlite3.connect(AUTHDBPATH)
-        cursor = conn.cursor()
-
-        cursor.execute( "CREATE TABLE IF NOT EXISTS auth "
-                        "(user VARCHAR PRIMARY KEY, hash VARCHAR)")
-
-        cursor.execute("INSERT INTO auth VALUES (?, ?)", (username, hash))
-
-        if not os.path.isdir(COLLECTIONPATH+username):
-            os.makedirs(COLLECTIONPATH+username)
-
-        conn.commit()
-        conn.close()
+        user_manager = SqliteUserManager(AUTHDBPATH, COLLECTIONPATH)
+        user_manager.add_user(username, password)
     else:
         usage()
 
 def deluser(username):
     if username and os.path.isfile(AUTHDBPATH):
-            conn = sqlite3.connect(AUTHDBPATH)
-            cursor = conn.cursor()
+        user_manager = SqliteUserManager(AUTHDBPATH, COLLECTIONPATH)
 
-            cursor.execute("DELETE FROM auth WHERE user=?", (username,))
-
-            conn.commit()
-            conn.close()
+        try:
+            user_manager.del_user(username)
+        except ValueError as error:
+            print("Could not delete user {}: {}"
+                  .format(username, error.message), file=sys.stderr)
     elif not username:
         usage()
     else:
-        print >>sys.stderr, sys.argv[0]+": Database file does not exist"
+        print("{}: Database file does not exist".format(sys.argv[0]),
+              file=sys.stderr)
 
 def lsuser():
-    conn = sqlite3.connect(AUTHDBPATH)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT user FROM auth")
-
-    row = cursor.fetchone()
-
-    while row is not None:
-        print row[0]
-
-        row = cursor.fetchone()
-
-    conn.close()
+    user_manager = SqliteUserManager(AUTHDBPATH, COLLECTIONPATH)
+    try:
+        users = user_manager.user_list()
+        for username in users:
+            print(username)
+    except ValueError as error:
+        print("Could not list users: {}".format(AUTHDBPATH, error.message),
+              file=sys.stderr)
 
 def passwd(username):
     if os.path.isfile(AUTHDBPATH):
-        print "Enter password for "+username+": "
-
+        print("Enter password for {}:".format(username))
         password = getpass.getpass()
-        salt = binascii.b2a_hex(os.urandom(8))
-        hash = hashlib.sha256(username+password+salt).hexdigest()+salt
 
-        conn = sqlite3.connect(AUTHDBPATH)
-        cursor = conn.cursor()
-
-        cursor.execute("UPDATE auth SET hash=? WHERE user=?", (hash, username))
-
-        conn.commit()
-        conn.close()
+        user_manager = SqliteUserManager(AUTHDBPATH, COLLECTIONPATH)
+        try:
+            user_manager.set_password_for_user(username, password)
+        except ValueError as error:
+            print("Could not set password for user {}: {}"
+                  .format(username, error.message), file=sys.stderr)
     else:
-        print >>sys.stderr, sys.argv[0]+": Database file does not exist"
+        print("{}: Database file does not exist".format(sys.argv[0]),
+              file=sys.stderr)
 
 def main():
     argc = len(sys.argv)
