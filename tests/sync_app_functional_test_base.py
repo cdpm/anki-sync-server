@@ -49,11 +49,11 @@ class SyncAppFunctionalTestBase(unittest.TestCase):
                                               self.server_paths['data_root'])
         self.user_manager.add_user('testuser', 'testpassword')
 
-        # Get absolute path to development ini file.
+        # Get absolute path to test ini file.
         script_dir = os.path.dirname(os.path.realpath(__file__))
         ini_file_path = os.path.join(script_dir,
                                      os.pardir,
-                                     "development.ini")
+                                     "test.ini")
 
         # Create SyncApp instance using the dev ini file and the temporary
         # paths.
